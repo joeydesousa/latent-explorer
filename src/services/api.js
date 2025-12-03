@@ -1,8 +1,9 @@
 const LATENT_DIM = 10; 
 const CACHE_GRID_SIZE = 32; // 32x32 = 1024 images
 const RANGE = 5; // -5 to +5
+const CHUNK_SIZE = 32
 
-const USE_MOCK = false;
+const USE_MOCK = true;
 
 const SERVER_URL = "https://joeydesousa-art-gan-backend.hf.space";
 
@@ -94,7 +95,14 @@ export const api = {
                 }
             }
         } else {
-            return generateMockImageFromVector(vector);
+            allVectors.forEach((vec, idx) => {
+                const img = generateMockImageFromVector(vec);
+                cache.push({
+                    x: allCoords[idx].x,
+                    y: allCoords[idx].y,
+                    image: img
+                });
+            });
         }
         
         return cache;
