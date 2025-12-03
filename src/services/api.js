@@ -3,7 +3,7 @@ const CACHE_GRID_SIZE = 32; // 32x32 = 1024 images
 const RANGE = 5; // -5 to +5
 const CHUNK_SIZE = 32
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 const SERVER_URL = "https://joeydesousa-art-gan-backend.hf.space";
 
