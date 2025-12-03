@@ -100,7 +100,7 @@ export const api = {
         return cache;
     },
 
-    /* 3. Exact Generation (For clicks)
+    // 3. Exact Generation (For clicks)
     generateImage: async (vector) => {
 
         if (USE_MOCK) {
@@ -120,7 +120,7 @@ export const api = {
             return null;
         }
 
-    }, */
+    },
 
     // 4. Video Rendering
     renderVideo: async (keyframes) => {
