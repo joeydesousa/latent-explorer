@@ -279,7 +279,7 @@ function App() {
               onMouseMove={handleMouseMove}
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
-              onClick={handleContainerClick}
+              onClick={() => { handleContainerClick; setVideoUrl(null); }}
               style={{ 
                   width: PLOT_SIZE, height: PLOT_SIZE, 
                   border: '1px solid #ccc', background: 'white', 
