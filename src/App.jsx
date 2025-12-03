@@ -120,6 +120,9 @@ function App() {
 
   // --- HANDLER: CLICK (Selection) ---
   const handleContainerClick = async (e) => {
+
+    setVideoUrl(null)
+
     const rect = e.currentTarget.getBoundingClientRect();
     const pixelX = e.clientX - rect.left;
     const pixelY = e.clientY - rect.top;
@@ -279,7 +282,7 @@ function App() {
               onMouseMove={handleMouseMove}
               onMouseEnter={handleMouseEnter}
               onMouseLeave={handleMouseLeave}
-              onClick={() => { handleContainerClick; setVideoUrl(null); }}
+              onClick={handleContainerClick}
               style={{ 
                   width: PLOT_SIZE, height: PLOT_SIZE, 
                   border: '1px solid #ccc', background: 'white', 
