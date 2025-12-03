@@ -2,6 +2,10 @@ const LATENT_DIM = 10;
 const CACHE_GRID_SIZE = 32; // 32x32 = 1024 images
 const RANGE = 5; // -5 to +5
 
+const USE_MOCK = false;
+
+const SERVER_URL = "https://joeydesousa-art-gan-backend.hf.space";
+
 // --- HELPER: COLOR GENERATOR (Same as before) ---
 const generateMockImageFromVector = (vector) => {
     const normalize = (val) => Math.min(255, Math.max(0, ((val + 5) / 10) * 255));
@@ -38,6 +42,10 @@ export const api = {
     // This simulates the heavy Python process of pre-rendering 1024 images
     generateCacheGrid: async (xAxis, yAxis) => {
         const cache = [];
+        const allVectors = [];
+        const allCoords = [];
+
+        console.log(`Preparing batch request...`)
         
         // Loop through the grid
         for (let i = 0; i < CACHE_GRID_SIZE; i++) {
@@ -51,20 +59,68 @@ export const api = {
                 vector[xAxis] = xVal;
                 vector[yAxis] = yVal;
                 
-                // Generate the image
-                const img = generateMockImageFromVector(vector);
-                
-                cache.push({ x: xVal, y: yVal, image: img });
+                // Save array of vectors
+                allVectors.push(vector);
+                allCoords.push({ x: xVal, y: yVal });
             }
         }
-        console.log(`Generated ${cache.length} cached images for Axes ${xAxis}/${yAxis}`);
+
+        if (!USE_MOCK) {
+            for (let i = 0; i < allVectors.length; i += CHUNK_SIZE) {
+                const vectorChunk = allVectors.slice(i, i + CHUNK_SIZE);
+                const coordChunk = allCoords.slice(i, i + CHUNK_SIZE);
+
+                try {
+                    const response = await fetch(`${SERVER_URL}/generate_batch`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json' },
+                        body: JSON.stringify({ vectors: vectorChunk })
+                    });
+                    const data = await response.json() ;
+
+                    // Match images back to coordinates
+                    data.images.forEach((imgBase64, index) => {
+                        cache.push({
+                            x: coordChunk[index].x,
+                            y: coordChunk[index].y,
+                            image: imgBase64
+                        });
+                    });
+
+                    console.log(`Loaded chunk ${i / CHUNK_SIZE + 1}`);
+
+                } catch (error) {
+                    console.error("Chunk failed", error);
+                }
+            }
+        } else {
+            return generateMockImageFromVector(vector);
+        }
+        
         return cache;
     },
 
-    // 3. Exact Generation (For clicks)
+    /* 3. Exact Generation (For clicks)
     generateImage: async (vector) => {
-        return generateMockImageFromVector(vector);
-    },
+
+        if (USE_MOCK) {
+            return generateMockImageFromVector(vector);
+        }
+
+        try {
+            const response = await fetch(`${SERVER_URL}/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vector: vector })
+            });
+            const data = await response.json();
+            return data.image;
+        } catch (error) {
+            console.error("API Error:", error);
+            return null;
+        }
+
+    }, */
 
     // 4. Video Rendering
     renderVideo: async (keyframes) => {

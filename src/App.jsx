@@ -377,7 +377,7 @@ function App() {
                     fontWeight: (i === xAxisComp || i === yAxisComp) ? 'bold' : 'normal', 
                     color: (i === xAxisComp || i === yAxisComp) ? 'blue' : 'black'
                   }}>
-                    Component {i} 
+                    Zomponent {i} 
                     {(i === xAxisComp) && " [X]"}
                     {(i === yAxisComp) && " [Y]"}
                   </label>
