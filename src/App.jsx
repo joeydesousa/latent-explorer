@@ -552,7 +552,7 @@ function App() {
           <button 
             onClick={handleRenderVideo}
             disabled={isRendering}
-            style = {{background: isRendering ? '#94a3b3' : '#22c5e',
+            style = {{background: isRendering ? '#94a3b3' : '#212324ff',
               color: 'white', border: 'none', padding: '5px 15px',
               borderRadius: '4px',marginTop: '20px',
               cursor: isRendering ? 'not-allowed' : 'pointer'

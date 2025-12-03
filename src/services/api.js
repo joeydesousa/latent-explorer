@@ -132,6 +132,46 @@ export const api = {
 
     // 4. Video Rendering
     renderVideo: async (keyframes) => {
+        if (USE_MOCK) {
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            return "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+        }
+
+        console.log("Sending video request...");
+
+        // 1. Clean the data (Remove the 'image' property to save bandwidth)
+        const cleanKeyframes = keyframes.map(k => ({
+            vector: k.vector,
+            duration: k.duration
+        }));
+
+        try {
+            const response = await fetch(`${SERVER_URL}/render_video`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    keyframes: cleanKeyframes,
+                    fps: 24 
+                })
+            });
+
+            if (!response.ok) throw new Error(`Server Error: ${response.status}`);
+            
+            const data = await response.json();
+            
+            // 2. Construct the full URL
+            // If the server returns a relative path like "/videos/vid.mp4",
+            // append it to the SERVER_URL.
+            return `${SERVER_URL}${data.url}`;
+
+        } catch (error) {
+            console.error("Video Render Failed:", error);
+            return null;
+        }
+    }
+    
+    /*
+    renderVideo: async (keyframes) => {
         console.log("Rendering video with keyframes:", keyframes);
 
         // 1. Simulate server delay
@@ -140,4 +180,5 @@ export const api = {
         //2. Return video URL - for now a fake
         return "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
     }
+    */
 };
