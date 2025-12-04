@@ -1,6 +1,6 @@
 const LATENT_DIM = 10; 
 const CACHE_GRID_SIZE = 32; // 32x32 = 1024 images
-const RANGE = 5; // -5 to +5
+// const RANGE = 5; // -5 to +5
 const CHUNK_SIZE = 32
 
 const USE_MOCK = false;
@@ -41,7 +41,7 @@ export const api = {
 
     // 2. Generate the Cache Grid (The "Baking" process)
     // This simulates the heavy Python process of pre-rendering 1024 images
-    generateCacheGrid: async (xAxis, yAxis) => {
+    generateCacheGrid: async (xAxis, yAxis, rangeX, rangeY) => {
         const cache = [];
         const allVectors = [];
         const allCoords = [];
@@ -52,8 +52,8 @@ export const api = {
         for (let i = 0; i < CACHE_GRID_SIZE; i++) {
             for (let j = 0; j < CACHE_GRID_SIZE; j++) {
                 // Calculate grid position (-5 to +5)
-                const xVal = (i / (CACHE_GRID_SIZE - 1)) * (RANGE * 2) - RANGE;
-                const yVal = (j / (CACHE_GRID_SIZE - 1)) * (RANGE * 2) - RANGE;
+                const xVal = (i / (CACHE_GRID_SIZE - 1)) * (rangeX * 2) - rangeX;
+                const yVal = (j / (CACHE_GRID_SIZE - 1)) * (rangeY * 2) - rangeY;
                 
                 // Create a vector that is 0 everywhere EXCEPT the two chosen axes
                 const vector = new Array(LATENT_DIM).fill(0);

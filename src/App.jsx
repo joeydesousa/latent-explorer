@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Plot from 'react-plotly.js';
 import { api } from './services/api';
 
-const AXIS_RANGE = 5;
+const AXIS_RANGE = 10;
 const VECTOR_SIZE = 10;
 
 function App() {
@@ -16,6 +16,10 @@ function App() {
   const [latentVector, setLatentVector] = useState(new Array(VECTOR_SIZE).fill(0));
   const [xAxisComp, setXAxisComp] = useState(0);
   const [yAxisComp, setYAxisComp] = useState(1);
+
+  const [sliderRanges, setSliderRanges] = useState(new Array(VECTOR_SIZE).fill(5.0));
+  const currentXRange = sliderRanges[xAxisComp];
+  const currentYRange = sliderRanges[yAxisComp];
 
   // --- STATE: OUTPUT ---
   const [exactClickImage, setExactClickImage] = useState(null);
@@ -59,11 +63,14 @@ function App() {
     const loadCache = async () => {
       setCacheGrid([]);
       // add buffer spinner?
-      const newCache = await api.generateCacheGrid(xAxisComp, yAxisComp);
+      const newCache = await api.generateCacheGrid(xAxisComp, yAxisComp, currentXRange, currentYRange);
       setCacheGrid(newCache);
     };
-    loadCache();
-  }, [xAxisComp, yAxisComp]);
+
+    const timeoutId = setTimeout(loadCache, 50);
+    return () => clearTimeout(timeoutId);
+
+  }, [xAxisComp, yAxisComp, currentXRange, currentYRange]);
 
   // FIND NEAREST CACHE
   const findNearestCache = (x, y) => {
@@ -104,8 +111,8 @@ function App() {
     const pixelX = e.clientX - rect.left;
     const pixelY = e.clientY - rect.top;
 
-    const x = (pixelX / PLOT_SIZE) * (AXIS_RANGE * 2) - AXIS_RANGE;
-    const y = -((pixelY / PLOT_SIZE) * (AXIS_RANGE * 2) - AXIS_RANGE);
+    const x = (pixelX / PLOT_SIZE) * (currentXRange * 2) - currentXRange;
+    const y = -((pixelY / PLOT_SIZE) * (currentYRange * 2) - currentYRange);
 
     // 3. Get Preview (Using the cache grid)
     const nearest = findNearestCache(x, y);
@@ -126,8 +133,8 @@ function App() {
     const rect = e.currentTarget.getBoundingClientRect();
     const pixelX = e.clientX - rect.left;
     const pixelY = e.clientY - rect.top;
-    const x = (pixelX / PLOT_SIZE) * (AXIS_RANGE * 2) - AXIS_RANGE;
-    const y = -((pixelY / PLOT_SIZE) * (AXIS_RANGE * 2) - AXIS_RANGE);
+    const x = (pixelX / PLOT_SIZE) * (currentXRange * 2) - currentXRange;
+    const y = -((pixelY / PLOT_SIZE) * (currentYRange * 2) - currentYRange);
 
     // Update Main State
     const newVector = [...latentVector];
@@ -139,6 +146,26 @@ function App() {
     // Generate High Res
     const imgData = await api.generateImage(newVector);
     setExactClickImage(imgData);
+  };
+
+  // set coarseness multipliers
+  const fine = 1 / AXIS_RANGE
+  const normal = 1
+  const coarse = 3
+
+  // --- HANDLER: COARSE/FINE MULTIPLIER
+  const updateSliderRange = (index, type) => {
+    const newRanges = [...sliderRanges];
+    if (type === 'fine') newRanges[index] = AXIS_RANGE * fine;
+    if (type === 'normal') newRanges[index] = AXIS_RANGE * normal;
+    if (type === 'coarse') newRanges[index] = AXIS_RANGE * coarse;
+    setSliderRanges(newRanges);
+  };
+
+  const getRangeType = (val) => {
+    if (val === AXIS_RANGE * fine) return 'fine';
+    if (val === AXIS_RANGE * coarse) return 'coarse';
+    return 'normal';
   };
 
   // --- HANDLER: SLIDER CHANGE ---
@@ -240,6 +267,31 @@ function App() {
     }
   };
 
+  // --- HANDLER: DOWNLOAD ---
+  const handleDownloadVideo = async () => {
+    if (!videoUrl) return;
+
+    try {
+      const response = await fetch(videoUrl);
+      const blob = await response.blob();
+
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = "latent-exploration.mp4";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      window.URL.revokeObjectURL(blobUrl);
+
+    } catch (error) {
+      console.error("Download failed:", error);
+      alert("Could not download video. Try right-clicking the video player and selecting 'Save Video As'.");
+    }
+  };
+
   return (
     <div style={{
       display: 'flex',
@@ -314,8 +366,8 @@ function App() {
               ]}
                 layout={{ 
                   width: PLOT_SIZE, height: PLOT_SIZE, title: false, showlegend: false,
-                  xaxis: { range: [-AXIS_RANGE, AXIS_RANGE], fixedrange: true, visible: false },
-                  yaxis: { range: [-AXIS_RANGE, AXIS_RANGE], fixedrange: true, visible: false },
+                  xaxis: { range: [-currentXRange, currentXRange], fixedrange: true, visible: false },
+                  yaxis: { range: [-currentYRange, currentYRange], fixedrange: true, visible: false },
                   margin: { l: 0, r: 0, t: 0, b: 0 },
                   hovermode: false
                 }}
@@ -373,25 +425,47 @@ function App() {
             padding: '20px'
           }}>
             {latentVector.map((val, i) => (
-              <div key={i} style={{ marginBottom: '15px' }}>
-                <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '5px'}}>
-                  <label style={{
-                    fontSize: '0.9em', 
-                    fontWeight: (i === xAxisComp || i === yAxisComp) ? 'bold' : 'normal', 
-                    color: (i === xAxisComp || i === yAxisComp) ? 'blue' : 'black'
-                  }}>
-                    Component {i} 
-                    {(i === xAxisComp) && " [X]"}
-                    {(i === yAxisComp) && " [Y]"}
-                  </label>
-                  <span style={{fontSize: '0.8em', color: '#666'}}>{val.toFixed(2)}</span>
+              <div key={i} style={{display: 'flex', gap: 10, marginBottom: '15px' }}>
+                <div style={{ flex:1 }}>
+                  <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '5px'}}>
+                    <label style={{
+                      fontSize: '0.9em', 
+                      fontWeight: (i === xAxisComp || i === yAxisComp) ? 'bold' : 'normal', 
+                      color: (i === xAxisComp || i === yAxisComp) ? 'blue' : 'black'
+                    }}>
+                      Component {i} 
+                      {(i === xAxisComp) && " [X]"}
+                      {(i === yAxisComp) && " [Y]"}
+                    </label>
+                    <span style={{fontSize: '0.8em', color: '#666'}}>{val.toFixed(2)}</span>
+                  </div>
+                  <input 
+                    type="range"
+                    min={-sliderRanges[i]} 
+                    max={sliderRanges[i]} 
+                    step={sliderRanges[i] === 1.0 ? 0.01 : 0.1}
+                    value={val}
+                    onChange={(e) => handleSliderChange(i, e.target.value)}
+                    style={{width: '100%', cursor: 'pointer'}} 
+                  />
                 </div>
-                <input 
-                  type="range" min="-5" max="5" step="0.1"
-                  value={val}
-                  onChange={(e) => handleSliderChange(i, e.target.value)}
-                  style={{width: '100%', cursor: 'pointer'}} 
-                />
+                <select
+                  value={getRangeType(sliderRanges[i])}
+                  onChange={(e) => updateSliderRange(i, e.target.value)}
+                  style={{
+                    fontSize: '0.9em',
+                    padding: '2px 6px', marginTop: '10px', marginBottom: '10px',
+                    borderRadius: '4px',
+                    color: '#000',
+                    border: 'none',
+                    background: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="fine">Fine</option>
+                  <option value="normal">Normal</option>
+                  <option value="coarse">Coarse</option>
+                </select>
               </div>
             ))}
           </div>
@@ -425,14 +499,14 @@ function App() {
                   style={{ width: '100%', borderRadius: '4px', border: '1px solid #ccc'}}
                 />
                 <button
-                  onClick={() => setVideoUrl(null)}
+                  onClick={handleDownloadVideo}
                   style={{
                     marginTop: '10px', width: '100%', padding: '8px',
                     background: 'transparent', border: '1px solid #999', color: '#666',
                     borderRadius: '4px', cursor: 'pointer'
                   }}
                 >
-                  Back to Selection
+                  Download MP4 💾
                 </button>
               </>
             ) :
@@ -546,7 +620,7 @@ function App() {
           ))}
         </div>
 
-        {/* Header Bar */}
+        {/* Right Side Bar */}
         <div style={{color: 'white', marginBottom: '10px', display: 'flex', flexDirection: 'column'}}>
           <strong>({keyframes.length} frames)</strong>
           <button 
