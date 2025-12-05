@@ -1,7 +1,7 @@
 const LATENT_DIM = 10; 
-const CACHE_GRID_SIZE = 32; // 32x32 = 1024 images
+const CACHE_GRID_SIZE = 10; // 32x32 = 1024 images
 // const RANGE = 5; // -5 to +5
-const CHUNK_SIZE = 32
+const CHUNK_SIZE = 10
 
 const USE_MOCK = false;
 
@@ -34,6 +34,58 @@ for (let i = 0; i < 500; i++) {
 }
 
 export const api = {
+
+    getModels: async () => {
+        if (USE_MOCK) return ["mock_seaweed_v1.pkl", "mock_faces.pkl"];
+        try {
+            const res = await fetch(`${SERVER_URL}/models`);
+            const data = await res.json();
+            return data.models;
+        } catch (e) {
+            console.error("Failed to fetch models:", e);
+            return [];
+        }
+    },
+
+    uploadModel: async (file) => {
+        if (USE_MOCK) {
+            console.log("Mock upload:", file.name);
+            return true;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const res = await fetch(`${SERVER_URL}/upload_model`, {
+                method: 'POST',
+                body: formData, // No headers! Fetch adds multipart/form-data automatically
+            });
+            return res.ok;
+        } catch (e) {
+            console.error("Upload failed:", e);
+            return false;
+        }
+    },
+
+    loadModel: async (filename) => {
+        if (USE_MOCK) {
+            console.log("Mock switch to:", filename);
+            return true;
+        }
+        try {
+            // Note: We send model_name as a query param or body depending on your FastAPI setup
+            // Here we use query param for simplicity: /load_model?model_name=xyz
+            const res = await fetch(`${SERVER_URL}/load_model?model_name=${encodeURIComponent(filename)}`, {
+                method: 'POST'
+            });
+            return res.ok;
+        } catch (e) {
+            console.error("Switch failed:", e);
+            return false;
+        }
+    },
+
     // 1. Get the "Real" Training Data (Full Vectors)
     getTrainingData: async () => {
         return trainingData;
@@ -79,6 +131,13 @@ export const api = {
                     });
                     const data = await response.json() ;
 
+                    if (!response.ok) {
+                        // Read the error text (HTML/String) from the server
+                        const errorText = await response.text();
+                        console.error("Server Error:", errorText);
+                        throw new Error(`Server responded with ${response.status}: ${errorText}`);
+                    }
+
                     // Match images back to coordinates
                     data.images.forEach((imgBase64, index) => {
                         cache.push({
@@ -121,6 +180,14 @@ export const api = {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ vector: vector })
             });
+
+            if (!response.ok) {
+                // Read the error text (HTML/String) from the server
+                const errorText = await response.text();
+                console.error("Server Error:", errorText);
+                throw new Error(`Server responded with ${response.status}: ${errorText}`);
+            }
+
             const data = await response.json();
             return data.image;
         } catch (error) {
@@ -128,6 +195,64 @@ export const api = {
             return null;
         }
 
+    },
+
+    getRandomVector: async () => {
+        if (USE_MOCK) return Array.from({length: 10}, () => Math.random());
+        
+        try {
+            const res = await fetch(`${SERVER_URL}/random_vector`);
+            if (!res.ok) throw new Error("Failed to get random vector");
+            const data = await res.json();
+            return data.vector;
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    getVectorFromMap: async (x, y, xComp, yComp) => {
+        if (USE_MOCK) return Array.from({length: 10}, () => Math.random()); // Mock
+
+        try {
+            const res = await fetch(`${SERVER_URL}/map_to_vector`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    x: x, y: y, 
+                    x_component: xComp, 
+                    y_component: yComp 
+                })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            return data.vector; // Returns the 512-dim Base Vector
+        } catch (e) {
+            console.error(e);
+            return [];
+        }
+    },
+
+    // 2. Generate Edited Image
+    generateEditedImage: async (baseVector, sliderValues) => {
+        if (USE_MOCK) return generateMockImageFromVector(sliderValues); // Mock just uses sliders
+
+        try {
+            const response = await fetch(`${SERVER_URL}/generate_edited`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    base_vector: baseVector,
+                    slider_values: sliderValues 
+                })
+            });
+            if (!response.ok) throw new Error(await response.text());
+            const data = await response.json();
+            return data.image;
+        } catch (error) {
+            console.error("Edit generation failed:", error);
+            return null;
+        }
     },
 
     // 4. Video Rendering
@@ -141,7 +266,8 @@ export const api = {
 
         // 1. Clean the data (Remove the 'image' property to save bandwidth)
         const cleanKeyframes = keyframes.map(k => ({
-            vector: k.vector,
+            base_vector: k.base_vector,
+            slider_values: k.slider_values, // Renamed from 'vector' for clarity
             duration: k.duration
         }));
 

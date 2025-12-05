@@ -8,6 +8,12 @@ const VECTOR_SIZE = 10;
 function App() {
   const [windowHeight, setWindowHeight] = useState(window.innerHeight);
 
+  const [modelList, setModelList] = useState([]);
+  const [currentModel, setCurrentModel] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+
+  const [isLoading, setIsLoading] = useState(false);
+
   // --- DATA STATE ---
   const [trainingData, setTrainingData] = useState([]); // The 500 persistent points
   const [cacheGrid, setCacheGrid] = useState([]);       // The 1024 cached preview images
@@ -16,6 +22,9 @@ function App() {
   const [latentVector, setLatentVector] = useState(new Array(VECTOR_SIZE).fill(0));
   const [xAxisComp, setXAxisComp] = useState(0);
   const [yAxisComp, setYAxisComp] = useState(1);
+
+  const [baseVector, setBaseVector] = useState([]); // 512-dim (Hidden)
+  const [sliderValues, setSliderValues] = useState(new Array(VECTOR_SIZE).fill(0)); // 10-dim (Visible)
 
   const [sliderRanges, setSliderRanges] = useState(new Array(VECTOR_SIZE).fill(5.0));
   const currentXRange = sliderRanges[xAxisComp];
@@ -53,12 +62,23 @@ function App() {
 
   const PLOT_SIZE = AVAILABLE_HEIGHT;
 
+  useEffect(() => {
+    // Fetch available models on startup
+    const fetchModels = async () => {
+        const models = await api.getModels();
+        setModelList(models);
+        if (models.length > 0) setCurrentModel(models[0]);
+    };
+    fetchModels();
+  }, []);
+
   // Load Map
   useEffect(() => {
     api.getTrainingData().then(data => setTrainingData(data));
   }, []);
 
   // Adjust to new axis
+  /*
   useEffect(() => {
     const loadCache = async () => {
       setCacheGrid([]);
@@ -71,6 +91,44 @@ function App() {
     return () => clearTimeout(timeoutId);
 
   }, [xAxisComp, yAxisComp, currentXRange, currentYRange]);
+  */
+
+  const handleModelChange = async (e) => {
+    const newModel = e.target.value;
+    setIsLoading(true);
+    try {
+      setCurrentModel(newModel);
+      // Tell backend to switch
+      await api.loadModel(newModel);
+      // Optional: Refresh the map or cache here if the model architecture changes drastically
+    } catch (e) {
+          console.error(e);
+          alert("Failed to load model");
+      } finally {
+          setIsLoading(false); // <--- STOP LOADING (Always)
+      }
+  };
+
+  const handleFileUpload = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      setIsUploading(true);
+      const success = await api.uploadModel(file);
+      setIsUploading(false);
+
+      if (success) {
+          alert("Model uploaded successfully!");
+          // Refresh list to show new model
+          const models = await api.getModels();
+          setModelList(models);
+          // Automatically switch to it
+          setCurrentModel(file.name);
+          await api.loadModel(file.name);
+      } else {
+          alert("Upload failed.");
+      }
+  };
 
   // FIND NEAREST CACHE
   const findNearestCache = (x, y) => {
@@ -127,25 +185,71 @@ function App() {
 
   // --- HANDLER: CLICK (Selection) ---
   const handleContainerClick = async (e) => {
+    if (isLoading) return;
 
-    setVideoUrl(null)
+    setIsLoading(true);
+    try {
+      setVideoUrl(null)
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pixelX = e.clientX - rect.left;
-    const pixelY = e.clientY - rect.top;
-    const x = (pixelX / PLOT_SIZE) * (currentXRange * 2) - currentXRange;
-    const y = -((pixelY / PLOT_SIZE) * (currentYRange * 2) - currentYRange);
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pixelX = e.clientX - rect.left;
+      const pixelY = e.clientY - rect.top;
+      const x = (pixelX / PLOT_SIZE) * (currentXRange * 2) - currentXRange;
+      const y = -((pixelY / PLOT_SIZE) * (currentYRange * 2) - currentYRange);
 
-    // Update Main State
-    const newVector = [...latentVector];
-    newVector[xAxisComp] = x;
-    newVector[yAxisComp] = y;
-    setLatentVector(newVector);
-    setExactClickCoords({ x, y });
+      // Update Main State
+      const newVector = [...latentVector];
+      newVector[xAxisComp] = x;
+      newVector[yAxisComp] = y;
+      setLatentVector(newVector);
+      setExactClickCoords({ x, y });
 
-    // Generate High Res
-    const imgData = await api.generateImage(newVector);
-    setExactClickImage(imgData);
+      // 1. Ask Backend: "What is the DNA at this map position?"
+      const newBase = await api.getVectorFromMap(x, y, xAxisComp, yAxisComp);
+      setBaseVector(newBase);
+
+      // 2. Reset Sliders to 0 (We are starting fresh at this map location)
+      const zeroSliders = new Array(VECTOR_SIZE).fill(0);
+      setSliderValues(zeroSliders);
+
+      // 3. Generate High Res
+      const imgData = await api.generateEditedImage(newBase, zeroSliders);
+      setExactClickImage(imgData);
+      
+      // Reset edit mode
+      setEditingFrameId(null);
+    } catch (e) {
+          console.error(e);
+          alert("Failed to generate base image");
+      } finally {
+          setIsLoading(false); // <--- STOP LOADING (Always)
+      }
+  };
+
+  // RANDOMISE HANDLER
+  const handleRandomize = async () => {
+    setIsLoading(true);
+    try {
+      // 1. Get new DNA
+      const newBase = await api.getRandomVector();
+      setBaseVector(newBase);
+      
+      // 2. Reset Sliders to 0
+      const zeroSliders = new Array(VECTOR_SIZE).fill(0);
+      setSliderValues(zeroSliders);
+      
+      // 3. Generate
+      const img = await api.generateEditedImage(newBase, zeroSliders);
+      setExactClickImage(img);
+      
+      // Optional: Clear selection markers
+      setExactClickCoords(null);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to randomize");
+    } finally {
+      setIsLoading(false); // <--- STOP LOADING (Always)
+    }
   };
 
   // set coarseness multipliers
@@ -168,15 +272,22 @@ function App() {
     return 'normal';
   };
 
-  // --- HANDLER: SLIDER CHANGE ---
   const handleSliderChange = async (index, value) => {
-    const newVector = [...latentVector];
-    newVector[index] = parseFloat(value);
-    setLatentVector(newVector);
-
-    // Update Selection Image
-    const imgData = await api.generateImage(newVector);
-    setExactClickImage(imgData);
+    setIsLoading(true);
+    try {
+      const newSliders = [...sliderValues];
+      newSliders[index] = parseFloat(value);
+      setSliderValues(newSliders);
+      
+      // Send BOTH vectors
+      const img = await api.generateEditedImage(baseVector, newSliders);
+      setExactClickImage(img);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to edit vectors");
+    } finally {
+      setIsLoading(false); // <--- STOP LOADING (Always)
+    }
   };
 
   // Add Keyframe
@@ -189,7 +300,8 @@ function App() {
         if (frame.id === editingFrameId) {
           return {
             ...frame,
-            vector: [...latentVector],
+            base_vector: [...baseVector],      // SAVE BASE
+            slider_values: [...sliderValues],  // SAVE SLIDERS
             image: exactClickImage
           };
         }
@@ -201,13 +313,14 @@ function App() {
 
     // ADDING NEW KEYFRAME
     else {
-      const newFrame = {
-        id: Date.now(), // timestamp creates a unique ID
-        vector: [...latentVector], // ... makes a copy!
-        image: exactClickImage,
-        duration: 2.0
-      };
-      setKeyframes([...keyframes, newFrame])
+    const frameData = {
+      id: Date.now(),
+      base_vector: [...baseVector],      // SAVE BASE
+      slider_values: [...sliderValues],  // SAVE SLIDERS
+      image: exactClickImage,
+      duration: 2.0
+    }
+      setKeyframes([...keyframes, frameData])
     }
   };
 
@@ -237,12 +350,10 @@ function App() {
   };
 
   const selectKeyframeForEdit = (frame) => {
-    // Load data into editor
-    setLatentVector([...frame.vector]);
+    setBaseVector([...frame.base_vector]);        // Restore Base
+    setSliderValues([...frame.slider_values]);    // Restore Sliders
     setExactClickImage(frame.image);
-
     setExactClickCoords(null);
-
     setEditingFrameId(frame.id);
   };
 
@@ -255,7 +366,7 @@ function App() {
 
     setIsRendering(true);
     setVideoUrl(null);
-
+    
     try {
       const url = await api.renderVideo(keyframes);
       setVideoUrl(url);
@@ -392,6 +503,47 @@ function App() {
             borderBottom: '1px solid #ddd',
             zIndex: 10 // Ensure it stays on top visually
           }}>
+
+            <div style={{
+                display: 'flex', justifyContent: 'space-between', gap: 10,
+                background: 'white',
+                marginBottom: 15, padding: 10,
+                borderRadius: 8, border: '1px solid #ddd'
+                }}>                
+                <div style={{flex: 1, gap: '5px', marginBottom: '10px'}}>
+                    <select 
+                        value={currentModel} 
+                        onChange={handleModelChange}
+                        style={{flex: 1, padding: '5px', borderRadius: '4px', border: '1px solid #ccc'}}
+                    >
+                        {modelList.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                </div>
+
+                {/* UPLOAD BUTTON */}
+                <div style={{position: 'relative', overflow: 'hidden', display: 'inline-block', width: '100%'}}>
+                    <button style={{
+                        width: '100%', padding: '8px', 
+                        background: isUploading ? '#ccc' : '#e0e7ff', 
+                        color: isUploading ? '#666' : '#4f46e5',
+                        border: '1px dashed #4f46e5', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'
+                    }}>
+                        {isUploading ? "Uploading..." : "⬆ Upload New Model"}
+                    </button>
+                    {/* Invisible file input covering the button */}
+                    <input 
+                        type="file" 
+                        accept=".pkl, .pth"
+                        onChange={handleFileUpload}
+                        disabled={isUploading}
+                        style={{
+                            position: 'absolute', top: 0, left: 0, 
+                            width: '100%', height: '100%', opacity: 0, cursor: 'pointer'
+                        }} 
+                    />
+                </div>
+            </div>
+
             <div style={{background: '#e0e0e0', padding: 10, borderRadius: 8}}>
 
               <div style={{display: 'flex', alignItems: 'center', marginBottom: 10}}>
@@ -401,7 +553,7 @@ function App() {
                 onChange={(e) => setXAxisComp(parseInt(e.target.value))}
                 style={{flex: 1, padding: '5px'}}
                 >
-                  {latentVector.map((_, i) => <option key={i} value={i}>Component {i}</option>)}
+                  {sliderValues.map((_, i) => <option key={i} value={i}>Component {i}</option>)}
                 </select>
               </div>
               
@@ -412,9 +564,23 @@ function App() {
                   onChange={(e) => setYAxisComp(parseInt(e.target.value))}
                   style={{flex: 1, padding: '5px'}}
                 >
-                  {latentVector.map((_, i) => <option key={i} value={i}>Component {i}</option>)}
+                  {sliderValues.map((_, i) => <option key={i} value={i}>Component {i}</option>)}
                 </select>
               </div>
+
+              <button 
+                onClick={handleRandomize}
+                disabled={isLoading}
+                style={{
+                    width: '100%', padding: '12px', marginBottom: '20px',
+                    background: isLoading ? '#ccc' : 'linear-gradient(45deg, #ec4899, #8b5cf6)', // Pink/Purple gradient
+                    color: 'white', border: 'none', borderRadius: '6px',
+                    fontWeight: 'bold', cursor: isLoading ? 'not-allowed' : 'pointer', fontSize: '1em'
+                }}
+              >
+                  🎲 New Random Image
+              </button>
+
             </div>
           </div>
 
@@ -424,7 +590,7 @@ function App() {
             overflowY: 'auto',  // 5. Scroll ONLY this area
             padding: '20px'
           }}>
-            {latentVector.map((val, i) => (
+            {sliderValues.map((val, i) => (
               <div key={i} style={{display: 'flex', gap: 10, marginBottom: '15px' }}>
                 <div style={{ flex:1 }}>
                   <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '5px'}}>
@@ -445,8 +611,9 @@ function App() {
                     max={sliderRanges[i]} 
                     step={sliderRanges[i] === 1.0 ? 0.01 : 0.1}
                     value={val}
+                    disabled={isLoading}
                     onChange={(e) => handleSliderChange(i, e.target.value)}
-                    style={{width: '100%', cursor: 'pointer'}} 
+                    style={{width: '100%', cursor: isLoading ? 'wait' : 'pointer', opacity: isLoading ? 0.5 : 1}} 
                   />
                 </div>
                 <select
@@ -473,6 +640,36 @@ function App() {
 
         {/* RIGHT: OUTPUT */}
         <div style={{ flex: 1, padding: '20px', background: 'white', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          
+          {/* --- LOADING OVERLAY --- */}
+            {isLoading && (
+                <div style={{
+                    position: 'absolute',
+                    top: 0, left: 0, width: '100%', height: '100%',
+                    background: 'rgba(255, 255, 255, 0.8)', // Semi-transparent white
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    zIndex: 50, // Sit on top of everything
+                    backdropFilter: 'blur(2px)' // Nice blur effect
+                }}>
+                    <div style={{
+                        width: '40px', height: '40px',
+                        border: '4px solid #f3f3f3',
+                        borderTop: '4px solid #4f46e5', // Blue spinner
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                    }} />
+                    <p style={{marginTop: '10px', color: '#4f46e5', fontWeight: 'bold'}}>Generating...</p>
+                    {/* Add keyframes for spin animation */}
+                    <style>{`
+                        @keyframes spin {
+                            0% { transform: rotate(0deg); }
+                            100% { transform: rotate(360deg); }
+                        }
+                    `}</style>
+                </div>
+            )}
+          
           <div style={{ padding: '15px', background: '#eef2ff', borderRadius: '8px', border: '1px solid #c7d2fe' }}>
             
             {/* CONDITION 1: IS RENDERING */}
@@ -516,7 +713,7 @@ function App() {
                 <img src={exactClickImage} style={{ width: '100%', borderRadius: '4px', border: '1px solid #c7d2fe' }} />
                 <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>
                   <p style={{fontSize: '0.8em', color: '#666'}}>
-                    Vector: [{latentVector.map(v => v.toFixed(1)).join(', ')}]
+                    Vector: [{sliderValues.map(v => v.toFixed(1)).join(', ')}]
                   </p>
                   <button
                     onClick={saveKeyframe}
