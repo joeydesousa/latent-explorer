@@ -5,7 +5,7 @@ const CHUNK_SIZE = 10
 
 const USE_MOCK = false;
 
-const SERVER_URL = "https://joeydesousa-art-gan-backend.hf.space";
+const SERVER_URL = "http://localhost:8000";
 
 // --- HELPER: COLOR GENERATOR (Same as before) ---
 const generateMockImageFromVector = (vector) => {
