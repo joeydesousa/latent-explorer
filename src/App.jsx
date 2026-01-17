@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Plot from 'react-plotly.js';
 import { api } from './services/api';
 
-const AXIS_RANGE = 10;
+const AXIS_RANGE = 5;
 const VECTOR_SIZE = 10;
 
 function App() {
