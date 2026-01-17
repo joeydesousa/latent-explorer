@@ -209,8 +209,8 @@ function App() {
       setBaseVector(newBase);
 
       // 2. Reset Sliders to 0 (We are starting fresh at this map location)
-      const zeroSliders = new Array(VECTOR_SIZE).fill(0);
-      setSliderValues(zeroSliders);
+      // const zeroSliders = new Array(VECTOR_SIZE).fill(0);
+      // setSliderValues(zeroSliders);
 
       // 3. Generate High Res
       const imgData = await api.generateEditedImage(newBase, zeroSliders);
